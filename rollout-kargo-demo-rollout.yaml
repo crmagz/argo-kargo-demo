@@ -1,0 +1,28 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  labels:
+    app: kargo-demo
+  name: kargo-demo-rollout
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: kargo-demo
+  strategy:
+    canary:
+      steps:
+      - setWeight: 20
+      - pause: {}
+      - setWeight: 50
+      - pause:
+          duration: 10
+      - setWeight: 100
+  template:
+    metadata:
+      labels:
+        app: kargo-demo
+    spec:
+      containers:
+      - image: public.ecr.aws/nginx/nginx:1.27.4
+        name: nginx
