@@ -4,7 +4,7 @@ metadata:
   name: kargo-demo
 spec:
   ports:
-  - nodePort: 30083
+  - nodePort: 30087
     port: 3000
     protocol: TCP
     targetPort: 80
