@@ -10,7 +10,7 @@ spec:
       elements:
       - stage: dev
       - stage: integration
-      - stage: qa
+      - stage: staging
       - stage: prod
   template:
     metadata:

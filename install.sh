@@ -12,10 +12,14 @@ NC='\033[0m' # No color
 
 echo -e "${YELLOW}🚀 Installing ArgoCD + Kargo + Rollouts Demo...${NC}"
 
+# Create Kind cluster
+echo -e "${YELLOW}📦 Creating Kind cluster...${NC}"
+kind create cluster --config kind/config.yml --name argo-kargo-demo
+
 # Add Helm repos
 helm repo add argo https://argoproj.github.io/argo-helm
 helm repo add jetstack https://charts.jetstack.io
-helm repo update
+helm repo update argo jetstack
 
 # Install Cert Manager
 helm upgrade --install cert-manager jetstack/cert-manager \
@@ -48,17 +52,19 @@ KARGO_SIGNING_KEY=$(openssl rand -base64 48 | tr -d "=+/" | head -c 32)
 
 # Install Kargo
 helm upgrade --install kargo oci://ghcr.io/akuity/kargo-charts/kargo \
-  --version 1.3.3 \
+  --version 1.8.4 \
   --namespace kargo --create-namespace \
   --set api.adminAccount.passwordHash="$KARGO_HASHED_PASS" \
   --set api.adminAccount.tokenSigningKey="$KARGO_SIGNING_KEY" \
   --wait --timeout 4m
 
 # Port-forward ArgoCD and Kargo in background via tmux
-command -v tmux >/dev/null && {
-  tmux new-session -d -s argo-port "kubectl port-forward svc/argocd-server -n argocd 8080:443"
-  tmux new-session -d -s kargo-port "kubectl port-forward svc/kargo-api -n kargo 3000:443"
-} || echo "⚠️ tmux not found; skipping persistent port-forwards"
+if command -v tmux >/dev/null 2>&1 && [[ -z "${TMUX:-}" ]]; then
+  tmux new-session -d -s argo-port "kubectl port-forward svc/argocd-server -n argocd 8080:443" 2>/dev/null || true
+  tmux new-session -d -s kargo-port "kubectl port-forward svc/kargo-api -n kargo 3000:443" 2>/dev/null || true
+else
+  echo "⚠️ tmux not available or already in tmux session; skipping persistent port-forwards"
+fi
 
 # Wait for ArgoCD
 echo -n "${YELLOW}⏳ Waiting for ArgoCD on localhost:8080..."
@@ -84,23 +90,7 @@ argocd repo add https://github.com/crmagz/argo-kargo-demo \
 # Install Argo Rollouts CLI
 brew list kubectl-argo-rollouts >/dev/null 2>&1 || brew install argoproj/tap/kubectl-argo-rollouts
 
-# Apply dynamic Secret (needs Bash var expansion)
-cat <<EOF | kubectl apply -f -
-apiVersion: v1
-kind: Secret
-type: Opaque
-metadata:
-  name: kargo-demo-repo
-  namespace: kargo-demo
-  labels:
-    kargo.akuity.io/cred-type: git
-stringData:
-  repoURL: https://github.com/crmagz/argo-kargo-demo
-  username: ${GITHUB_USERNAME}
-  password: ${GITHUB_TOKEN}
-EOF
-
-# Apply remaining manifests with Kargo/Argo templating
+# Apply ApplicationSet and Kargo Project first
 cat <<'EOF' | kubectl apply -f -
 ---
 apiVersion: argoproj.io/v1alpha1
@@ -138,14 +128,30 @@ apiVersion: kargo.akuity.io/v1alpha1
 kind: Project
 metadata:
   name: kargo-demo
-spec:
-  promotionPolicies:
-    - stage: dev
-      autoPromotionEnabled: true
-    - stage: qa
-      autoPromotionEnabled: true
-    - stage: prod
-      autoPromotionEnabled: false 
+EOF
+
+# Wait for Kargo Project to be ready
+echo -e "${YELLOW}⏳ Waiting for Kargo Project to be ready...${NC}"
+kubectl wait --for=condition=Ready project/kargo-demo --timeout=60s
+
+# Apply Git credentials Secret (needs Bash var expansion)
+cat <<EOF | kubectl apply -f -
+apiVersion: v1
+kind: Secret
+type: Opaque
+metadata:
+  name: kargo-demo-repo
+  namespace: kargo-demo
+  labels:
+    kargo.akuity.io/cred-type: git
+stringData:
+  repoURL: https://github.com/crmagz/argo-kargo-demo
+  username: ${GITHUB_USERNAME}
+  password: ${GITHUB_TOKEN}
+EOF
+
+# Apply Kargo resources (Warehouse, PromotionTask, Stages, AnalysisTemplates)
+cat <<'EOF' | kubectl apply -f -
 ---
 apiVersion: kargo.akuity.io/v1alpha1
 kind: Warehouse
@@ -256,7 +262,7 @@ spec:
 apiVersion: kargo.akuity.io/v1alpha1
 kind: Stage
 metadata:
-  name: qa
+  name: staging
   namespace: kargo-demo
 spec:
   requestedFreight:
@@ -274,16 +280,16 @@ spec:
         as: promo-process
   verification:
     analysisTemplates:
-    - name: analysis-template-qa        
+    - name: analysis-template-staging
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: AnalysisTemplate
 metadata:
-  name: analysis-template-qa
+  name: analysis-template-staging
   namespace: kargo-demo
 spec:
   metrics:
-  - name: analysis-template-qa
+  - name: analysis-template-staging
     provider:
       job:
         spec:
@@ -294,7 +300,7 @@ spec:
                 image: alpine:latest
                 command: ["/bin/sh", "-c", "exit 1"]
               restartPolicy: Never
-          backoffLimit: 1    
+          backoffLimit: 1
 ---
 apiVersion: kargo.akuity.io/v1alpha1
 kind: Stage
@@ -308,7 +314,7 @@ spec:
       name: kargo-demo
     sources:
       stages:
-      - qa
+      - staging
   promotionTemplate:
     spec:
       steps:

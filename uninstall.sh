@@ -48,4 +48,8 @@ kubectl delete namespace kargo --ignore-not-found=true
 kubectl delete namespace kargo-demo --ignore-not-found=true
 kubectl delete namespace cert-manager --ignore-not-found=true
 
+# 🗑️ Delete Kind cluster
+echo -e "${YELLOW}==> Deleting Kind cluster...${NC}"
+kind delete cluster --name argo-kargo-demo
+
 echo -e "\n${GREEN}✅ Cleanup complete!${NC}"
