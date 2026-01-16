@@ -90,45 +90,12 @@ argocd repo add https://github.com/crmagz/argo-kargo-demo \
 # Install Argo Rollouts CLI
 brew list kubectl-argo-rollouts >/dev/null 2>&1 || brew install argoproj/tap/kubectl-argo-rollouts
 
-# Apply ApplicationSet and Kargo Project first
-cat <<'EOF' | kubectl apply -f -
----
-apiVersion: argoproj.io/v1alpha1
-kind: ApplicationSet
-metadata:
-  name: kargo-demo
-  namespace: argocd
-spec:
-  generators:
-  - list:
-      elements:
-      - stage: dev
-      - stage: integration
-      - stage: staging
-      - stage: prod
-  template:
-    metadata:
-      name: kargo-demo-{{stage}}
-      annotations:
-        kargo.akuity.io/authorized-stage: kargo-demo:{{stage}}
-    spec:
-      project: default
-      source:
-        repoURL: https://github.com/crmagz/argo-kargo-demo
-        targetRevision: stage/{{stage}}
-        path: .
-      destination:
-        server: https://kubernetes.default.svc
-        namespace: kargo-demo-{{stage}}
-      syncPolicy:
-        syncOptions:
-        - CreateNamespace=true
----
-apiVersion: kargo.akuity.io/v1alpha1
-kind: Project
-metadata:
-  name: kargo-demo
-EOF
+# Apply ApplicationSet and Kargo Project
+echo -e "${YELLOW}📦 Applying ApplicationSet...${NC}"
+kubectl apply -f appset.yml
+
+echo -e "${YELLOW}📦 Applying Kargo Project...${NC}"
+kubectl apply -f kargo/project.yml
 
 # Wait for Kargo Project to be ready
 echo -e "${YELLOW}⏳ Waiting for Kargo Project to be ready...${NC}"
@@ -150,178 +117,11 @@ stringData:
   password: ${GITHUB_TOKEN}
 EOF
 
-# Apply Kargo resources (Warehouse, PromotionTask, Stages, AnalysisTemplates)
-cat <<'EOF' | kubectl apply -f -
----
-apiVersion: kargo.akuity.io/v1alpha1
-kind: Warehouse
-metadata:
-  name: kargo-demo
-  namespace: kargo-demo
-spec:
-  subscriptions:
-  - image:
-      repoURL: public.ecr.aws/nginx/nginx
-      semverConstraint: ^1.26.0
-      discoveryLimit: 5
----
-apiVersion: kargo.akuity.io/v1alpha1
-kind: PromotionTask
-metadata:
-  name: demo-promo-process
-  namespace: kargo-demo
-spec:
-  vars:
-  - name: gitopsRepo
-    value: https://${GITHUB_USERNAME}:${GITHUB_TOKEN}@github.com/crmagz/argo-kargo-demo
-  - name: imageRepo
-    value: public.ecr.aws/nginx/nginx
-  steps:
-  - uses: git-clone
-    config:
-      repoURL: ${{ vars.gitopsRepo }}
-      checkout:
-        - branch: main
-          path: ./src
-        - branch: stage/${{ ctx.stage }}
-          create: true
-          path: ./out
-  - uses: git-clear
-    config:
-      path: ./out
-  - uses: kustomize-set-image
-    as: update-image
-    config:
-      path: ./src/base
-      images:
-        - image: ${{ vars.imageRepo }}
-          tag: ${{ imageFrom(vars.imageRepo).Tag }}
-  - uses: kustomize-build
-    config:
-      path: ./src/stages/${{ ctx.stage }}
-      outPath: ./out
-  - uses: git-commit
-    as: commit
-    config:
-      path: ./out
-      messageFromSteps:
-        - update-image
-  - uses: git-push
-    config:
-      path: ./out
-  - uses: argocd-update
-    config:
-      apps:
-        - name: kargo-demo-${{ ctx.stage }}
-          sources:
-            - repoURL: ${{ vars.gitopsRepo }}
-              desiredRevision: ${{ task.outputs.commit.commit }}
----
-apiVersion: kargo.akuity.io/v1alpha1
-kind: Stage
-metadata:
-  name: dev
-  namespace: kargo-demo
-spec:
-  requestedFreight:
-  - origin:
-      kind: Warehouse
-      name: kargo-demo
-    sources:
-      direct: true
-  promotionTemplate:
-    spec:
-      steps:
-      - task:
-          name: demo-promo-process
-        as: promo-process
-  verification:
-    analysisTemplates:
-    - name: analysis-template-dev
----
-apiVersion: argoproj.io/v1alpha1
-kind: AnalysisTemplate
-metadata:
-  name: analysis-template-dev
-  namespace: kargo-demo
-spec:
-  metrics:
-  - name: analysis-template-dev
-    provider:
-      job:
-        spec:
-          template:
-            spec:
-              containers:
-              - name: sleep
-                image: alpine:latest
-                command: [sleep, "10"]
-              restartPolicy: Never
-          backoffLimit: 1
----
-apiVersion: kargo.akuity.io/v1alpha1
-kind: Stage
-metadata:
-  name: staging
-  namespace: kargo-demo
-spec:
-  requestedFreight:
-  - origin:
-      kind: Warehouse
-      name: kargo-demo
-    sources:
-      stages:
-      - dev
-  promotionTemplate:
-    spec:
-      steps:
-      - task:
-          name: demo-promo-process
-        as: promo-process
-  verification:
-    analysisTemplates:
-    - name: analysis-template-staging
----
-apiVersion: argoproj.io/v1alpha1
-kind: AnalysisTemplate
-metadata:
-  name: analysis-template-staging
-  namespace: kargo-demo
-spec:
-  metrics:
-  - name: analysis-template-staging
-    provider:
-      job:
-        spec:
-          template:
-            spec:
-              containers:
-              - name: sleep
-                image: alpine:latest
-                command: ["/bin/sh", "-c", "exit 1"]
-              restartPolicy: Never
-          backoffLimit: 1
----
-apiVersion: kargo.akuity.io/v1alpha1
-kind: Stage
-metadata:
-  name: prod
-  namespace: kargo-demo
-spec:
-  requestedFreight:
-  - origin:
-      kind: Warehouse
-      name: kargo-demo
-    sources:
-      stages:
-      - staging
-  promotionTemplate:
-    spec:
-      steps:
-      - task:
-          name: demo-promo-process
-        as: promo-process
-EOF
+# Apply Kargo resources from files (Warehouse, PromotionTask, Stages, AnalysisTemplates)
+echo -e "${YELLOW}📦 Applying Kargo resources...${NC}"
+kubectl apply -f kargo/warehouse.yml
+kubectl apply -f kargo/promotiontask.yml
+kubectl apply -f kargo/stages.yml
 
 # Final Output
 echo -e "\n${GREEN}✅ Installation complete!${NC}"

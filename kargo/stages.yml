@@ -1,0 +1,105 @@
+---
+apiVersion: kargo.akuity.io/v1alpha1
+kind: Stage
+metadata:
+  name: dev
+  namespace: kargo-demo
+spec:
+  requestedFreight:
+  - origin:
+      kind: Warehouse
+      name: kargo-demo
+    sources:
+      direct: true
+  promotionTemplate:
+    spec:
+      steps:
+      - task:
+          name: demo-promo-process
+        as: promo-process
+  verification:
+    analysisTemplates:
+    - name: analysis-template-dev
+---
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: analysis-template-dev
+  namespace: kargo-demo
+spec:
+  metrics:
+  - name: analysis-template-dev
+    provider:
+      job:
+        spec:
+          template:
+            spec:
+              containers:
+              - name: sleep
+                image: alpine:latest
+                command: [sleep, "10"]
+              restartPolicy: Never
+          backoffLimit: 1
+---
+apiVersion: kargo.akuity.io/v1alpha1
+kind: Stage
+metadata:
+  name: staging
+  namespace: kargo-demo
+spec:
+  requestedFreight:
+  - origin:
+      kind: Warehouse
+      name: kargo-demo
+    sources:
+      stages:
+      - dev
+  promotionTemplate:
+    spec:
+      steps:
+      - task:
+          name: demo-promo-process
+        as: promo-process
+  verification:
+    analysisTemplates:
+    - name: analysis-template-staging
+---
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: analysis-template-staging
+  namespace: kargo-demo
+spec:
+  metrics:
+  - name: analysis-template-staging
+    provider:
+      job:
+        spec:
+          template:
+            spec:
+              containers:
+              - name: sleep
+                image: alpine:latest
+                command: ["/bin/sh", "-c", "exit 1"]
+              restartPolicy: Never
+          backoffLimit: 1
+---
+apiVersion: kargo.akuity.io/v1alpha1
+kind: Stage
+metadata:
+  name: prod
+  namespace: kargo-demo
+spec:
+  requestedFreight:
+  - origin:
+      kind: Warehouse
+      name: kargo-demo
+    sources:
+      stages:
+      - staging
+  promotionTemplate:
+    spec:
+      steps:
+      - task:
+          name: demo-promo-process
+        as: promo-process

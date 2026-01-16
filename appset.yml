@@ -27,5 +27,8 @@ spec:
         server: https://kubernetes.default.svc
         namespace: kargo-demo-{{stage}}
       syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
         syncOptions:
         - CreateNamespace=true
