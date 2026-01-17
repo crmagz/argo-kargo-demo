@@ -17,29 +17,6 @@ spec:
       - task:
           name: demo-promo-process
         as: promo-process
-  verification:
-    analysisTemplates:
-    - name: analysis-template-dev
----
-apiVersion: argoproj.io/v1alpha1
-kind: AnalysisTemplate
-metadata:
-  name: analysis-template-dev
-  namespace: kargo-demo
-spec:
-  metrics:
-  - name: analysis-template-dev
-    provider:
-      job:
-        spec:
-          template:
-            spec:
-              containers:
-              - name: sleep
-                image: alpine:latest
-                command: [sleep, "10"]
-              restartPolicy: Never
-          backoffLimit: 1
 ---
 apiVersion: kargo.akuity.io/v1alpha1
 kind: Stage
@@ -62,25 +39,25 @@ spec:
         as: promo-process
   verification:
     analysisTemplates:
-    - name: analysis-template-staging
+    - name: verify-staging
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: AnalysisTemplate
 metadata:
-  name: analysis-template-staging
+  name: verify-staging
   namespace: kargo-demo
 spec:
   metrics:
-  - name: analysis-template-staging
+  - name: verify-staging
     provider:
       job:
         spec:
           template:
             spec:
               containers:
-              - name: sleep
+              - name: verify
                 image: alpine:latest
-                command: ["/bin/sh", "-c", "exit 1"]
+                command: [sleep, "10"]
               restartPolicy: Never
           backoffLimit: 1
 ---
@@ -103,3 +80,26 @@ spec:
       - task:
           name: demo-promo-process
         as: promo-process
+  verification:
+    analysisTemplates:
+    - name: verify-prod
+---
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: verify-prod
+  namespace: kargo-demo
+spec:
+  metrics:
+  - name: verify-prod
+    provider:
+      job:
+        spec:
+          template:
+            spec:
+              containers:
+              - name: verify
+                image: alpine:latest
+                command: [sleep, "10"]
+              restartPolicy: Never
+          backoffLimit: 1
