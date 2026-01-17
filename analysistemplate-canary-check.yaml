@@ -1,0 +1,22 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: canary-check
+spec:
+  metrics:
+  - count: 1
+    failureLimit: 0
+    name: canary-check
+    provider:
+      job:
+        spec:
+          backoffLimit: 1
+          template:
+            spec:
+              containers:
+              - command:
+                - sleep
+                - "5"
+                image: alpine:latest
+                name: check
+              restartPolicy: Never

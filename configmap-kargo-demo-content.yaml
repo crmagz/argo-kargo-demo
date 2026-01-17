@@ -4,11 +4,11 @@ data:
     <!DOCTYPE html>
     <html>
     <head>
-    <title>prod</title>
+    <title>staging</title>
     </head>
     <body>
 
-    <h1>prod</h1>
+    <h1>staging</h1>
 
     </body>
     </html>
