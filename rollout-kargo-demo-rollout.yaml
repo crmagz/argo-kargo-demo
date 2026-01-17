@@ -11,10 +11,12 @@ spec:
       app: kargo-demo
   strategy:
     canary:
+      abortScaleDownDelaySeconds: 30
       steps:
       - setWeight: 20
-      - pause:
-          duration: 60
+      - analysis:
+          templates:
+          - templateName: canary-check
       - setWeight: 50
       - pause:
           duration: 60
@@ -25,5 +27,5 @@ spec:
         app: kargo-demo
     spec:
       containers:
-      - image: public.ecr.aws/nginx/nginx:1.27.4
+      - image: public.ecr.aws/nginx/nginx:1.26.0
         name: nginx
