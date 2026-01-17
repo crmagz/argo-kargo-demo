@@ -19,7 +19,8 @@ spec:
                 - |
                   echo "Testing canary service..."
                   curl -sf http://kargo-demo-canary:3000/ || exit 1
-                  echo "Canary check passed!"
+                  echo "Simulating production verification failure..."
+                  exit 1
               restartPolicy: Never
           backoffLimit: 1
     count: 1

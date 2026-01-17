@@ -5,6 +5,9 @@ resources:
 - ../../base
 - configmap.yaml
 
+patchesStrategicMerge:
+- analysis-template-fail.yaml
+
 patches:
 - target:
     kind: Service

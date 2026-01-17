@@ -19,6 +19,8 @@ spec:
         image: public.ecr.aws/nginx/nginx:1.26.0
   strategy:
     canary:
+      stableService: kargo-demo
+      canaryService: kargo-demo-canary
       steps:
       - setWeight: 20
       - pause: {duration: 30}
@@ -28,5 +30,4 @@ spec:
       - setWeight: 50
       - pause: {duration: 30}
       - setWeight: 100
-      # Rollback automatically if analysis fails
       abortScaleDownDelaySeconds: 30
