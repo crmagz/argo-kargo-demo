@@ -5,7 +5,7 @@
 This repository is a **proof-of-concept demo** evaluating Argo CD, Argo Rollouts, and Kargo for GitOps and progressive delivery in a software development lifecycle (SDLC). The target audience is **software engineers** looking to simplify GitOps observability and delivery processes.
 
 ### Goals
-- Demonstrate multi-stage promotion pipelines (dev → integration → staging → prod)
+- Demonstrate multi-stage promotion pipelines (dev → staging → prod)
 - Showcase progressive delivery with canary rollouts
 - Automate environment promotions with verification gates
 - Provide a foundation for production-ready GitOps workflows
@@ -13,13 +13,13 @@ This repository is a **proof-of-concept demo** evaluating Argo CD, Argo Rollouts
 ## Architecture
 
 ```
-┌─────────────┐     ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│     Dev     │────▶│ Integration │────▶│   Staging   │────▶│    Prod     │
-└─────────────┘     └─────────────┘     └─────────────┘     └─────────────┘
-      │                                        │
-      ▼                                        ▼
- AnalysisTemplate                        AnalysisTemplate
- (verification)                          (intentional fail)
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+│     Dev     │────▶│   Staging   │────▶│    Prod     │
+└─────────────┘     └─────────────┘     └─────────────┘
+      │                   │                   │
+      ▼                   ▼                   ▼
+ AnalysisTemplate   AnalysisTemplate   AnalysisTemplate
+ (canary-check)     (canary-check)     (intentional fail)
 ```
 
 ### Components
@@ -47,11 +47,12 @@ This repository is a **proof-of-concept demo** evaluating Argo CD, Argo Rollouts
 ├── uninstall.sh            # Cleanup script
 ├── appset.yml              # Argo CD ApplicationSet
 ├── base/                   # Base Kustomize manifests
-│   ├── rollout.yaml        # Argo Rollout (canary strategy)
-│   └── service.yaml        # Kubernetes Service
+│   ├── rollout.yaml        # Argo Rollout (canary strategy with analysis)
+│   ├── service.yaml        # Kubernetes Service (stable)
+│   ├── canary-service.yaml # Kubernetes Service (canary traffic)
+│   └── analysis-template.yaml  # AnalysisTemplate for canary verification
 ├── stages/                 # Environment-specific overlays
 │   ├── dev/
-│   ├── integration/
 │   ├── staging/
 │   └── prod/
 ├── kargo/                  # Kargo resource definitions
@@ -76,8 +77,10 @@ Kargo configuration should be managed from files in the `kargo/` directory:
 | `stages.yml` | Stage definitions with AnalysisTemplates for verification |
 
 ### Base Application (`base/`)
-- `rollout.yaml`: Canary strategy with 20% → 50% → 100% traffic shifting
-- `service.yaml`: NodePort service for the demo application
+- `rollout.yaml`: Canary strategy with 20% → 50% → 100% traffic shifting, includes inline analysis step
+- `service.yaml`: NodePort service for stable traffic
+- `canary-service.yaml`: Service targeting canary pods for analysis verification
+- `analysis-template.yaml`: `canary-check` template that curls the canary service to verify health
 
 ## Current State & Roadmap
 
@@ -85,13 +88,17 @@ Kargo configuration should be managed from files in the `kargo/` directory:
 - Kind cluster provisioning with Argo CD, Rollouts, and Kargo
 - Multi-stage ApplicationSet generating per-environment apps
 - Basic promotion workflow with Kustomize image updates
-- Simple verification gates using Alpine sleep jobs
 - Kargo resources moved from inline heredocs to `kargo/` directory files
+- Canary analysis with auto-rollback integrated into rollout strategy
+  - `canary-check` AnalysisTemplate in base verifies canary pods via HTTP
+  - Rollout pauses at 20%, runs analysis, then continues to 50% → 100%
+  - Prod stage overrides with intentional failure to demonstrate rollback
+- Canary service added for targeted traffic during analysis
 
 ### TODO
 
-#### Improved AnalysisTemplates
-Current analysis templates are placeholders. Future improvements:
+#### Enhanced AnalysisTemplates
+Current analysis uses HTTP health checks via curl. Future improvements could include:
 
 **Metrics-based verification:**
 ```yaml
@@ -149,9 +156,6 @@ spec:
     successCondition: result.approved == true
 ```
 
-#### Missing Integration Stage
-The `install.sh` defines dev, staging, and prod stages but omits integration. Ensure `kargo/stages.yml` includes all four stages.
-
 ## Development Workflow
 
 ### Prerequisites
@@ -179,12 +183,16 @@ export GITHUB_TOKEN=your-token
 1. Kargo Warehouse detects new nginx image
 2. Creates Freight and promotes to dev stage
 3. PromotionTask runs: clone → kustomize → commit → push → sync
-4. Argo Rollouts performs canary deployment
-5. AnalysisTemplate runs verification
-6. On success, promotion continues to next stage
+4. Argo Rollouts performs canary deployment:
+   - Sets canary weight to 20%
+   - Pauses 30 seconds
+   - Runs `canary-check` AnalysisTemplate (curls canary service)
+   - On success: continues to 50% → 100%
+   - On failure: auto-rollback to stable version
+5. On successful rollout, promotion continues to next stage
 
 ### Manual Rollout Promotion
-Canary pauses at 20% for manual approval:
+If a rollout is paused or you want to skip analysis:
 ```bash
 kubectl argo rollouts promote kargo-demo-rollout -n kargo-demo-dev
 ```

@@ -25,7 +25,7 @@ kubectl delete -f appset.yml --ignore-not-found=true || true
 
 # 🔧 Remove finalizers from Kargo stages
 echo -e "${YELLOW}==> Removing finalizers from Kargo stages (if any)...${NC}"
-for stage in dev integration staging prod; do
+for stage in dev staging prod; do
   kubectl patch stage "$stage" -n kargo-demo -p '{"metadata":{"finalizers":[]}}' --type=merge || true
 done
 

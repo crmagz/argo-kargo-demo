@@ -4,17 +4,16 @@ This demo sets up a GitOps-based Kubernetes delivery pipeline using:
 
 - Argo CD for application deployment and visualization
 - Argo Rollouts for progressive delivery (canary deployments)
-- Kargo for automated stage-based promotions (Dev → Integration → Staging → Prod)
+- Kargo for automated stage-based promotions (Dev → Staging → Prod)
 
 ⸻
 
 🧩 Overview
 
-The pipeline consists of 4 progressive delivery stages:
+The pipeline consists of 3 progressive delivery stages:
 	1.	Dev
-	2.	Integration
-	3.	Staging
-	4.	Production
+	2.	Staging
+	3.	Production
 
 Each stage uses:
 
@@ -51,7 +50,7 @@ chmod +x install.sh
 kubectl argo rollouts promote kargo-demo-rollout -n kargo-demo-dev
 ```
 
-Once promoted, Kargo advances the version to integration, staging, and prod, following the defined stage templates.
+Once promoted, Kargo advances the version to staging and prod, following the defined stage templates.
 
 ⸻
 

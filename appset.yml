@@ -9,7 +9,6 @@ spec:
   - list:
       elements:
       - stage: dev
-      - stage: integration
       - stage: staging
       - stage: prod
   template:
