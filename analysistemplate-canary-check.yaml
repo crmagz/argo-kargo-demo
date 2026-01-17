@@ -15,8 +15,13 @@ spec:
             spec:
               containers:
               - command:
-                - sleep
-                - "5"
-                image: alpine:latest
+                - /bin/sh
+                - -c
+                - |
+                  echo "Testing canary service..."
+                  curl -sf http://kargo-demo-canary:3000/ || exit 1
+                  echo "Simulating production verification failure..."
+                  exit 1
+                image: curlimages/curl:latest
                 name: check
               restartPolicy: Never
