@@ -14,12 +14,14 @@ spec:
       abortScaleDownDelaySeconds: 30
       steps:
       - setWeight: 20
+      - pause:
+          duration: 30
       - analysis:
           templates:
           - templateName: canary-check
       - setWeight: 50
       - pause:
-          duration: 60
+          duration: 30
       - setWeight: 100
   template:
     metadata:
