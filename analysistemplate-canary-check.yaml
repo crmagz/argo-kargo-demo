@@ -3,24 +3,25 @@ kind: AnalysisTemplate
 metadata:
   name: canary-check
 spec:
+  args:
+  - name: namespace
   metrics:
-  - count: 1
-    failureLimit: 0
-    name: canary-check
+  - count: 3
+    failureLimit: 1
+    interval: 10s
+    name: canary-memory-check
     provider:
-      job:
-        spec:
-          backoffLimit: 1
-          template:
-            spec:
-              containers:
-              - command:
-                - /bin/sh
-                - -c
-                - |
-                  echo "Testing canary service..."
-                  curl -sf http://kargo-demo-canary:3000/ || exit 1
-                  echo "Canary check passed!"
-                image: curlimages/curl:latest
-                name: check
-              restartPolicy: Never
+      prometheus:
+        address: http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090
+        query: |
+          max(
+            sum(
+              container_memory_working_set_bytes{
+                namespace="{{args.namespace}}",
+                pod=~"kargo-demo-rollout-.*",
+                container!="",
+                container!="POD"
+              }
+            ) by (pod)
+          ) / 1024 / 1024
+    successCondition: result[0] < 150

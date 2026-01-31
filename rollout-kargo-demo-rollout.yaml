@@ -19,6 +19,9 @@ spec:
       - pause:
           duration: 30
       - analysis:
+          args:
+          - name: namespace
+            value: kargo-demo-staging
           templates:
           - templateName: canary-check
       - setWeight: 50
@@ -31,5 +34,5 @@ spec:
         app: kargo-demo
     spec:
       containers:
-      - image: public.ecr.aws/nginx/nginx:1.29.1
+      - image: public.ecr.aws/nginx/nginx:1.29.2
         name: nginx
