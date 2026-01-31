@@ -6,7 +6,7 @@ spec:
   ports:
   - port: 3000
     protocol: TCP
-    targetPort: 80
+    targetPort: 8080
   selector:
     app: kargo-demo
   type: ClusterIP

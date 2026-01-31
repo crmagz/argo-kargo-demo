@@ -30,9 +30,56 @@ spec:
       - setWeight: 100
   template:
     metadata:
+      annotations:
+        prometheus.io/path: /metrics
+        prometheus.io/port: "8080"
+        prometheus.io/scrape: "true"
       labels:
         app: kargo-demo
     spec:
       containers:
-      - image: public.ecr.aws/nginx/nginx:1.29.2
-        name: nginx
+      - env:
+        - name: PORT
+          value: "8080"
+        - name: REDIS_HOST
+          value: localhost
+        - name: REDIS_PORT
+          value: "6379"
+        - name: REDIS_PASSWORD
+          value: demo
+        - name: LOG_LEVEL
+          value: info
+        image: 964108025908.dkr.ecr.us-east-1.amazonaws.com/product-api:1.0.0
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 15
+        name: product-api
+        ports:
+        - containerPort: 8080
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 10
+      - args:
+        - --save
+        - ""
+        - --appendonly
+        - "no"
+        - --requirepass
+        - demo
+        image: redis:7-alpine
+        name: redis
+        ports:
+        - containerPort: 6379
+        resources:
+          limits:
+            cpu: 100m
+            memory: 64Mi
+          requests:
+            cpu: 50m
+            memory: 32Mi

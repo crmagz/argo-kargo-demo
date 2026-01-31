@@ -9,19 +9,18 @@ spec:
   - count: 3
     failureLimit: 1
     interval: 10s
-    name: canary-memory-check
+    name: canary-health
     provider:
-      prometheus:
-        address: http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090
-        query: |
-          max(
-            sum(
-              container_memory_working_set_bytes{
-                namespace="{{args.namespace}}",
-                pod=~"kargo-demo-rollout-.*",
-                container!="",
-                container!="POD"
-              }
-            ) by (pod)
-          ) / 1024 / 1024
-    successCondition: result[0] < 150
+      web:
+        jsonPath: '{$.status}'
+        url: http://kargo-demo-canary.{{args.namespace}}.svc.cluster.local:3000/health
+    successCondition: result == 'healthy'
+  - count: 3
+    failureLimit: 1
+    interval: 10s
+    name: canary-products
+    provider:
+      web:
+        jsonPath: '{$.count}'
+        url: http://kargo-demo-canary.{{args.namespace}}.svc.cluster.local:3000/products
+    successCondition: asInt(result) >= 1
