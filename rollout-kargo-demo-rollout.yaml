@@ -19,6 +19,9 @@ spec:
       - pause:
           duration: 30
       - analysis:
+          args:
+          - name: namespace
+            value: kargo-demo-prod
           templates:
           - templateName: canary-check
       - setWeight: 50
@@ -31,5 +34,21 @@ spec:
         app: kargo-demo
     spec:
       containers:
-      - image: public.ecr.aws/nginx/nginx:1.29.1
+      - image: public.ecr.aws/nginx/nginx:1.29.2
         name: nginx
+      - args:
+        - --vm
+        - "1"
+        - --vm-bytes
+        - 256M
+        - --vm-hang
+        - "0"
+        command:
+        - stress
+        image: polinux/stress:latest
+        name: stress
+        resources:
+          limits:
+            memory: 512Mi
+          requests:
+            memory: 64Mi
