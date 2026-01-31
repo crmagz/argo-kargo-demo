@@ -27,6 +27,9 @@ spec:
       - analysis:
           templates:
           - templateName: canary-check
+          args:
+          - name: namespace
+            value: kargo-demo-dev
       - setWeight: 50
       - pause: {duration: 30}
       - setWeight: 100

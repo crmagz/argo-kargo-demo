@@ -13,3 +13,10 @@ patches:
     - op: replace
       path: /spec/ports/0/nodePort
       value: 30088
+- target:
+    kind: Rollout
+    name: kargo-demo-rollout
+  patch: |-
+    - op: replace
+      path: /spec/strategy/canary/steps/2/analysis/args/0/value
+      value: kargo-demo-staging

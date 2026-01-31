@@ -52,18 +52,25 @@ metadata:
   namespace: kargo-demo
 spec:
   metrics:
-  - name: verify-staging
+  - name: verify-staging-memory
     provider:
-      job:
-        spec:
-          template:
-            spec:
-              containers:
-              - name: verify
-                image: alpine:latest
-                command: [sleep, "10"]
-              restartPolicy: Never
-          backoffLimit: 1
+      prometheus:
+        address: http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090
+        query: |
+          max(
+            sum(
+              container_memory_working_set_bytes{
+                namespace="kargo-demo-staging",
+                pod=~"kargo-demo-rollout-.*",
+                container!="",
+                container!="POD"
+              }
+            ) by (pod)
+          ) / 1024 / 1024
+    successCondition: result[0] < 150
+    interval: 10s
+    count: 3
+    failureLimit: 1
 ---
 apiVersion: kargo.akuity.io/v1alpha1
 kind: Stage
@@ -97,15 +104,22 @@ metadata:
   namespace: kargo-demo
 spec:
   metrics:
-  - name: verify-prod
+  - name: verify-prod-memory
     provider:
-      job:
-        spec:
-          template:
-            spec:
-              containers:
-              - name: verify
-                image: alpine:latest
-                command: [sleep, "10"]
-              restartPolicy: Never
-          backoffLimit: 1
+      prometheus:
+        address: http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090
+        query: |
+          max(
+            sum(
+              container_memory_working_set_bytes{
+                namespace="kargo-demo-prod",
+                pod=~"kargo-demo-rollout-.*",
+                container!="",
+                container!="POD"
+              }
+            ) by (pod)
+          ) / 1024 / 1024
+    successCondition: result[0] < 150
+    interval: 10s
+    count: 3
+    failureLimit: 1

@@ -16,10 +16,16 @@ echo -e "${YELLOW}🚀 Installing ArgoCD + Kargo + Rollouts Demo...${NC}"
 echo -e "${YELLOW}📦 Creating Kind cluster...${NC}"
 kind create cluster --config kind/config.yml --name argo-kargo-demo
 
+# Pre-load stress image for prod canary analysis
+echo -e "${YELLOW}📦 Pre-loading stress image into Kind cluster...${NC}"
+docker pull polinux/stress:latest
+kind load docker-image polinux/stress:latest --name argo-kargo-demo
+
 # Add Helm repos
 helm repo add argo https://argoproj.github.io/argo-helm
 helm repo add jetstack https://charts.jetstack.io
-helm repo update argo jetstack
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+helm repo update argo jetstack prometheus-community
 
 # Install Cert Manager
 helm upgrade --install cert-manager jetstack/cert-manager \
@@ -45,6 +51,14 @@ helm upgrade --install argo-rollouts argo/argo-rollouts \
   -n argo-rollouts --create-namespace \
   --set dashboard.enabled=true --wait --timeout 3m
 
+# Install Prometheus + Grafana (kube-prometheus-stack)
+echo -e "${YELLOW}📦 Installing Prometheus + Grafana...${NC}"
+helm upgrade --install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
+  --namespace monitoring --create-namespace \
+  --set grafana.adminPassword=admin \
+  --set grafana.service.type=ClusterIP \
+  --wait --timeout 5m
+
 # Generate Kargo credentials
 KARGO_PASS=$(openssl rand -base64 48 | tr -d "=+/" | head -c 32)
 KARGO_HASHED_PASS=$(htpasswd -bnBC 10 "" "$KARGO_PASS" | tr -d ':\n')
@@ -62,6 +76,7 @@ helm upgrade --install kargo oci://ghcr.io/akuity/kargo-charts/kargo \
 if command -v tmux >/dev/null 2>&1 && [[ -z "${TMUX:-}" ]]; then
   tmux new-session -d -s argo-port "kubectl port-forward svc/argocd-server -n argocd 8080:443" 2>/dev/null || true
   tmux new-session -d -s kargo-port "kubectl port-forward svc/kargo-api -n kargo 3000:443" 2>/dev/null || true
+  tmux new-session -d -s grafana-port "kubectl port-forward svc/kube-prometheus-stack-grafana -n monitoring 3001:80" 2>/dev/null || true
 else
   echo "⚠️ tmux not available or already in tmux session; skipping persistent port-forwards"
 fi
@@ -129,6 +144,8 @@ echo -e "${GREEN}ArgoCD Admin Password:${NC} $ARGOCD_PASS"
 echo -e "${GREEN}Kargo Admin Password:${NC} $KARGO_PASS"
 echo -e "\n🌐 Access ArgoCD UI: https://localhost:8080"
 echo -e "🌐 Access Kargo UI: https://localhost:3000"
+echo -e "🌐 Access Grafana UI: http://localhost:3001 (admin / admin)"
 echo -e "\n💡 To reattach to port-forward sessions:"
 echo -e "  tmux attach -t argo-port"
 echo -e "  tmux attach -t kargo-port"
+echo -e "  tmux attach -t grafana-port"

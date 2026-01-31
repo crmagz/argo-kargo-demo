@@ -5,9 +5,6 @@ resources:
 - ../../base
 - configmap.yaml
 
-patchesStrategicMerge:
-- analysis-template-fail.yaml
-
 patches:
 - target:
     kind: Service
@@ -16,3 +13,22 @@ patches:
     - op: replace
       path: /spec/ports/0/nodePort
       value: 30089
+- target:
+    kind: Rollout
+    name: kargo-demo-rollout
+  patch: |-
+    - op: replace
+      path: /spec/strategy/canary/steps/2/analysis/args/0/value
+      value: kargo-demo-prod
+    - op: add
+      path: /spec/template/spec/containers/-
+      value:
+        name: stress
+        image: polinux/stress:latest
+        command: ["stress"]
+        args: ["--vm", "1", "--vm-bytes", "256M", "--vm-hang", "0"]
+        resources:
+          requests:
+            memory: 64Mi
+          limits:
+            memory: 512Mi
