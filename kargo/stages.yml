@@ -52,22 +52,21 @@ metadata:
   namespace: kargo-demo
 spec:
   metrics:
-  - name: verify-staging-memory
+  - name: staging-health-check
     provider:
-      prometheus:
-        address: http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090
-        query: |
-          max(
-            sum(
-              container_memory_working_set_bytes{
-                namespace="kargo-demo-staging",
-                pod=~"kargo-demo-rollout-.*",
-                container!="",
-                container!="POD"
-              }
-            ) by (pod)
-          ) / 1024 / 1024
-    successCondition: result[0] < 150
+      web:
+        url: http://kargo-demo.kargo-demo-staging.svc.cluster.local:3000/health
+        jsonPath: "{$.status}"
+    successCondition: "result == 'healthy'"
+    interval: 10s
+    count: 3
+    failureLimit: 1
+  - name: staging-products-check
+    provider:
+      web:
+        url: http://kargo-demo.kargo-demo-staging.svc.cluster.local:3000/products
+        jsonPath: "{$.count}"
+    successCondition: "asInt(result) >= 1"
     interval: 10s
     count: 3
     failureLimit: 1
@@ -93,33 +92,3 @@ spec:
       - task:
           name: demo-promo-process
         as: promo-process
-  verification:
-    analysisTemplates:
-    - name: verify-prod
----
-apiVersion: argoproj.io/v1alpha1
-kind: AnalysisTemplate
-metadata:
-  name: verify-prod
-  namespace: kargo-demo
-spec:
-  metrics:
-  - name: verify-prod-memory
-    provider:
-      prometheus:
-        address: http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090
-        query: |
-          max(
-            sum(
-              container_memory_working_set_bytes{
-                namespace="kargo-demo-prod",
-                pod=~"kargo-demo-rollout-.*",
-                container!="",
-                container!="POD"
-              }
-            ) by (pod)
-          ) / 1024 / 1024
-    successCondition: result[0] < 150
-    interval: 10s
-    count: 3
-    failureLimit: 1

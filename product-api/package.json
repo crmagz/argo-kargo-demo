@@ -1,0 +1,25 @@
+{
+  "name": "product-api",
+  "version": "1.0.0",
+  "description": "Product catalog API with Redis caching",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js"
+  },
+  "keywords": ["api", "synthetic", "testing", "products", "cache"],
+  "author": "iHeartMedia Infosec",
+  "license": "UNLICENSED",
+  "dependencies": {
+    "express": "^4.18.2",
+    "redis": "^4.6.11",
+    "prom-client": "^15.1.0",
+    "winston": "^3.11.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

@@ -5,7 +5,7 @@
 This repository is a **proof-of-concept demo** evaluating Argo CD, Argo Rollouts, and Kargo for GitOps and progressive delivery in a software development lifecycle (SDLC). The target audience is **software engineers** looking to simplify GitOps observability and delivery processes.
 
 ### Goals
-- Demonstrate multi-stage promotion pipelines (dev → staging → prod)
+- Demonstrate multi-stage promotion pipelines (dev -> staging -> prod)
 - Showcase progressive delivery with canary rollouts
 - Automate environment promotions with verification gates
 - Provide a foundation for production-ready GitOps workflows
@@ -14,27 +14,32 @@ This repository is a **proof-of-concept demo** evaluating Argo CD, Argo Rollouts
 
 ```
 ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│     Dev     │────▶│   Staging   │────▶│    Prod     │
+│     Dev     │────>│   Staging   │────>│    Prod     │
 └─────────────┘     └─────────────┘     └─────────────┘
       │                   │                   │
-      ▼                   ▼                   ▼
- AnalysisTemplate   AnalysisTemplate   AnalysisTemplate
- (Prometheus mem)   (Prometheus mem)   (Prometheus mem)
-  nginx ~20MB        nginx ~20MB        nginx + stress sidecar
-  < 150MB PASS       < 150MB PASS       > 150MB FAIL → ROLLBACK
+      v                   v                   v
+ Rollout Analysis   Rollout Analysis   Rollout Analysis
+ (Web: /health +    (Web: /health +    (Prometheus mem)
+  /products)         /products)        product-api + stress
+  -> PASS            -> PASS           > 150MB -> ROLLBACK
+                          │
+                          v
+                   Kargo Verification
+                   (Web: /health +
+                    /products on stable)
 ```
 
 ### Canary Analysis Strategy
-Prometheus-based memory analysis replaces hardcoded failures:
-- **Dev/Staging**: nginx alone uses ~20MB per pod, well under the 150MB threshold
-- **Prod**: A `stress` sidecar (256MB allocation) pushes pod memory above threshold, triggering auto-rollback
-- kube-prometheus-stack scrapes cAdvisor metrics (`container_memory_working_set_bytes`) from kubelet
-- The 30s pause before analysis gives Prometheus 2+ scrape cycles (15s default interval)
+- **Dev/Staging**: Web provider analysis checks product-api endpoints (`/health` returns `status: healthy`, `/products` returns `count >= 1`)
+- **Prod**: Prometheus memory analysis — a `stress` sidecar (256MB allocation) pushes pod memory above 150MB threshold, triggering auto-rollback
+- **Staging Kargo Verification**: Post-deploy HTTP smoke test against the stable service (demonstrates Kargo verification value)
+- The 30s pause before analysis gives the canary pods time to start and respond to health checks
 
 ### Components
 - **Argo CD**: GitOps controller syncing Kubernetes state from Git
 - **Argo Rollouts**: Progressive delivery with canary deployment strategy
 - **Kargo**: Multi-stage promotion automation with verification gates
+- **product-api**: Node.js Express REST API with Redis caching, Prometheus metrics, and health endpoints
 
 ### Installed Versions
 
@@ -46,7 +51,8 @@ Prometheus-based memory analysis replaces hardcoded failures:
 | Rollout Extension | v0.3.4 | UI extension for Argo CD |
 | Cert Manager | Latest (Helm) | Uses `jetstack/cert-manager` chart |
 | kube-prometheus-stack | Latest (Helm) | Prometheus + Grafana for canary analysis |
-| nginx (demo app) | ^1.26.0 | Semver constraint for image subscription |
+| product-api (demo app) | ^1.0.0 | Semver constraint for ECR image subscription |
+| Redis | 7-alpine | Sidecar for product-api caching |
 | polinux/stress | latest | Stress sidecar for prod canary failure |
 
 > **Note**: Consider pinning Helm chart versions for reproducible installations. Check [Argo Helm Charts](https://github.com/argoproj/argo-helm) and [Cert Manager Releases](https://cert-manager.io/docs/releases/) for available versions.
@@ -57,25 +63,38 @@ Prometheus-based memory analysis replaces hardcoded failures:
 ├── install.sh              # Main installation script
 ├── uninstall.sh            # Cleanup script
 ├── appset.yml              # Argo CD ApplicationSet
+├── product-api/            # Demo application source
+│   ├── Dockerfile          # Node.js 20 Alpine image
+│   ├── .dockerignore
+│   ├── package.json        # Express, Redis, prom-client, winston
+│   └── src/
+│       └── index.js        # REST API with /health, /ready, /metrics, /products
 ├── base/                   # Base Kustomize manifests
-│   ├── rollout.yaml        # Argo Rollout (canary strategy with analysis)
-│   ├── service.yaml        # Kubernetes Service (stable)
+│   ├── rollout.yaml        # Argo Rollout (product-api + Redis sidecar, canary strategy)
+│   ├── service.yaml        # Kubernetes Service (stable, port 3000 -> 8080)
 │   ├── canary-service.yaml # Kubernetes Service (canary traffic)
-│   └── analysis-template.yaml  # AnalysisTemplate for canary verification
+│   └── analysis-template.yaml  # AnalysisTemplate (web provider: /health + /products)
 ├── stages/                 # Environment-specific overlays
 │   ├── dev/                # Patches namespace arg for analysis
 │   ├── staging/            # Patches namespace arg for analysis
-│   └── prod/               # Adds stress sidecar + namespace arg patch
+│   └── prod/               # Adds stress sidecar + overrides AnalysisTemplate to Prometheus memory check
 ├── kargo/                  # Kargo resource definitions
 │   ├── project.yml         # Kargo Project
-│   ├── warehouse.yml       # Image source subscription
+│   ├── warehouse.yml       # ECR product-api image subscription
 │   ├── promotiontask.yml   # Promotion workflow steps
-│   └── stages.yml          # Stage definitions with AnalysisTemplates
+│   └── stages.yml          # Stage definitions with verification AnalysisTemplates
 └── kind/
     └── config.yml          # Kind cluster configuration
 ```
 
 ## Key Files
+
+### product-api (`product-api/`)
+A Node.js Express REST API with Redis caching that serves as the demo application:
+- **Endpoints**: `/health`, `/ready`, `/metrics`, `/products`, `/products/:id`
+- **Redis sidecar**: Runs as a sidecar container (localhost:6379) for caching
+- **Prometheus metrics**: Exposes `http_request_duration_seconds`, `http_requests_total`, `cache_hits_total`, etc.
+- **ECR repo**: `964108025908.dkr.ecr.us-east-1.amazonaws.com/product-api`
 
 ### Kargo Resources (`kargo/`)
 Kargo configuration should be managed from files in the `kargo/` directory:
@@ -83,15 +102,19 @@ Kargo configuration should be managed from files in the `kargo/` directory:
 | File | Purpose |
 |------|---------|
 | `project.yml` | Defines the Kargo project namespace |
-| `warehouse.yml` | Subscribes to nginx image updates (semver ^1.26.0) |
+| `warehouse.yml` | Subscribes to ECR product-api image updates (semver ^1.0.0) |
 | `promotiontask.yml` | 7-step promotion workflow (clone, build, commit, push, sync) |
-| `stages.yml` | Stage definitions with AnalysisTemplates for verification |
+| `stages.yml` | Stage definitions with web-based verification AnalysisTemplates |
 
 ### Base Application (`base/`)
-- `rollout.yaml`: Canary strategy with 20% → 50% → 100% traffic shifting, includes Prometheus-based analysis step with `namespace` arg
-- `service.yaml`: NodePort service for stable traffic
-- `canary-service.yaml`: Service targeting canary pods for analysis verification
-- `analysis-template.yaml`: `canary-check` template using Prometheus provider to query pod memory (`container_memory_working_set_bytes`), accepts `namespace` arg
+- `rollout.yaml`: product-api + Redis sidecar, canary strategy with 20% -> 50% -> 100% traffic shifting, web-based analysis step with `namespace` arg, Prometheus scrape annotations
+- `service.yaml`: NodePort service for stable traffic (port 3000 -> 8080)
+- `canary-service.yaml`: ClusterIP service targeting canary pods for analysis verification
+- `analysis-template.yaml`: `canary-check` template using web provider to check `/health` (status=healthy) and `/products` (count >= 1), accepts `namespace` arg
+
+### Stage Overlays (`stages/`)
+- **dev/staging**: Patch the namespace arg for canary analysis
+- **prod**: Patches namespace arg, adds stress sidecar (256MB), and overrides the AnalysisTemplate to use Prometheus memory check instead of web provider (stress sidecar causes memory > 150MB -> rollback)
 
 ## Current State & Roadmap
 
@@ -100,18 +123,20 @@ Kargo configuration should be managed from files in the `kargo/` directory:
 - Multi-stage ApplicationSet generating per-environment apps
 - Basic promotion workflow with Kustomize image updates
 - Kargo resources moved from inline heredocs to `kargo/` directory files
-- Canary analysis with auto-rollback integrated into rollout strategy
-  - `canary-check` AnalysisTemplate uses Prometheus to query pod memory
-  - Rollout pauses at 20%, runs analysis, then continues to 50% → 100%
-  - Prod stage adds stress sidecar (256MB) causing memory threshold breach → auto-rollback
-- Canary service added for targeted traffic during analysis
-- Prometheus + Grafana (kube-prometheus-stack) for metrics-based canary verification
+- **product-api** demo application with Redis caching, Prometheus metrics, and health endpoints
+- Web provider canary analysis checking `/health` and `/products` endpoints (dev/staging)
+- Prometheus memory analysis for prod with stress sidecar causing rollback
+- Kargo staging verification with HTTP smoke tests against stable service
+- Canary service for targeted traffic during analysis
+- Prometheus + Grafana (kube-prometheus-stack) for metrics
 - Per-stage namespace arg passed to analysis template via Kustomize patches
+- ECR image repository with Kargo Warehouse subscription
+- AWS ECR credential management in install script
 
 ### TODO
 
 #### Enhanced AnalysisTemplates
-Current analysis uses Prometheus memory queries. Future improvements could include:
+Current analysis uses web provider health/product checks (dev/staging) and Prometheus memory (prod). Future improvements could include:
 
 **HTTP success rate verification:**
 ```yaml
@@ -121,18 +146,13 @@ query: |
   sum(rate(http_requests_total[5m])) * 100
 ```
 
-**Integration test verification (Job provider):**
+**Latency verification (p99):**
 ```yaml
-provider:
-  job:
-    spec:
-      template:
-        spec:
-          containers:
-          - name: tests
-            image: your-test-image:latest
-            command: ["/bin/sh", "-c"]
-            args: ["curl -f http://service:3000/health"]
+successCondition: result[0] < 0.5
+query: |
+  histogram_quantile(0.99,
+    rate(http_request_duration_seconds_bucket{namespace="{{args.namespace}}"}[5m])
+  )
 ```
 
 **Webhook-based verification:**
@@ -153,6 +173,8 @@ successCondition: result.approved == true
 - Kind
 - kubectl
 - Helm
+- AWS CLI (authenticated with ECR access)
+- argocd CLI
 - GitHub credentials (`GITHUB_USERNAME`, `GITHUB_TOKEN`)
 
 ### Quick Start
@@ -160,6 +182,8 @@ successCondition: result.approved == true
 # Set credentials
 export GITHUB_USERNAME=your-username
 export GITHUB_TOKEN=your-token
+export AWS_ACCOUNT_ID=964108025908  # optional, defaults to this
+export AWS_REGION=us-east-1         # optional, defaults to this
 
 # Install everything
 ./install.sh
@@ -167,20 +191,38 @@ export GITHUB_TOKEN=your-token
 # Access UIs
 # ArgoCD: https://localhost:8080
 # Kargo:  https://localhost:3000
+# Grafana: http://localhost:3001
+
+# Test the API
+curl http://localhost:30087/health
+curl http://localhost:30087/products
+```
+
+### ECR Token Expiry
+ECR tokens expire every 12 hours. If the demo runs longer, refresh the credential:
+```bash
+ECR_TOKEN=$(aws ecr get-login-password --region us-east-1)
+kubectl create secret generic kargo-demo-ecr -n kargo-demo \
+  --from-literal=repoURL=964108025908.dkr.ecr.us-east-1.amazonaws.com \
+  --from-literal=username=AWS \
+  --from-literal=password="$ECR_TOKEN" \
+  --dry-run=client -o yaml | kubectl apply -f -
+kubectl label secret kargo-demo-ecr -n kargo-demo kargo.akuity.io/cred-type=image --overwrite
 ```
 
 ### Promotion Flow
-1. Kargo Warehouse detects new nginx image
+1. Kargo Warehouse detects new product-api image in ECR
 2. Creates Freight and promotes to dev stage
-3. PromotionTask runs: clone → kustomize → commit → push → sync
+3. PromotionTask runs: clone -> kustomize -> commit -> push -> sync
 4. Argo Rollouts performs canary deployment:
    - Sets canary weight to 20%
-   - Pauses 30 seconds (allows 2+ Prometheus scrape cycles)
-   - Runs `canary-check` AnalysisTemplate (queries pod memory via Prometheus)
-   - Success condition: max pod memory < 150MB
-   - Dev/Staging: nginx ~20MB → PASS
-   - Prod: nginx + stress sidecar ~280MB → FAIL → auto-rollback
-5. On successful rollout, promotion continues to next stage
+   - Pauses 30 seconds (allows canary pods to start)
+   - Runs `canary-check` AnalysisTemplate:
+     - Dev/Staging: Web provider checks `/health` (status=healthy) and `/products` (count >= 1) -> PASS
+     - Prod: Prometheus memory check — stress sidecar pushes memory > 150MB -> FAIL -> auto-rollback
+   - On success: continues to 50% -> 100%
+5. Staging: After rollout completes, Kargo runs `verify-staging` AnalysisTemplate (HTTP smoke test against stable service)
+6. On successful verification, promotion continues to next stage
 
 ### Manual Rollout Promotion
 If a rollout is paused or you want to skip analysis:
@@ -227,6 +269,20 @@ kubectl logs -n kargo-demo -l kargo.akuity.io/promotion
 ```bash
 kubectl get analysisrun -n kargo-demo-dev
 kubectl describe analysisrun <name> -n kargo-demo-dev
+```
+
+### Test product-api Directly
+```bash
+# Dev environment
+curl http://localhost:30087/health
+curl http://localhost:30087/products
+curl http://localhost:30087/metrics
+
+# Staging environment
+curl http://localhost:30088/health
+
+# Prod environment
+curl http://localhost:30089/health
 ```
 
 ## References

@@ -3,7 +3,6 @@ kind: Kustomization
 
 resources:
 - ../../base
-- configmap.yaml
 
 patches:
 - target:
@@ -32,3 +31,29 @@ patches:
             memory: 64Mi
           limits:
             memory: 512Mi
+- target:
+    kind: AnalysisTemplate
+    name: canary-check
+  patch: |-
+    - op: replace
+      path: /spec/metrics
+      value:
+        - name: canary-memory-check
+          provider:
+            prometheus:
+              address: http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090
+              query: |
+                max(
+                  sum(
+                    container_memory_working_set_bytes{
+                      namespace="kargo-demo-prod",
+                      pod=~"kargo-demo-rollout-.*",
+                      container!="",
+                      container!="POD"
+                    }
+                  ) by (pod)
+                ) / 1024 / 1024
+          successCondition: result[0] < 150
+          interval: 10s
+          count: 3
+          failureLimit: 1

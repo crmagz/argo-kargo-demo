@@ -6,6 +6,6 @@ metadata:
 spec:
   subscriptions:
   - image:
-      repoURL: public.ecr.aws/nginx/nginx
-      semverConstraint: ^1.26.0
+      repoURL: 964108025908.dkr.ecr.us-east-1.amazonaws.com/product-api
+      semverConstraint: ^1.0.0
       discoveryLimit: 5
