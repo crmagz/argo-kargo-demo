@@ -17,7 +17,7 @@ spec:
           max(
             sum(
               container_memory_working_set_bytes{
-                namespace="{{args.namespace}}",
+                namespace="kargo-demo-prod",
                 pod=~"kargo-demo-rollout-.*",
                 container!="",
                 container!="POD"
