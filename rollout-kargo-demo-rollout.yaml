@@ -65,21 +65,21 @@ spec:
             port: 8080
           initialDelaySeconds: 5
           periodSeconds: 10
-      - args:
-        - --save
-        - ""
-        - --appendonly
-        - "no"
-        - --requirepass
-        - demo
-        image: redis:7-alpine
+      - env:
+        - name: REDIS_PASSWORD
+          value: demo
+        - name: REDIS_DISABLE_COMMANDS
+          value: ""
+        - name: REDIS_AOF_ENABLED
+          value: "no"
+        image: bitnamilegacy/redis:7.4.3
         name: redis
         ports:
         - containerPort: 6379
         resources:
           limits:
             cpu: 100m
-            memory: 64Mi
+            memory: 128Mi
           requests:
             cpu: 50m
             memory: 32Mi
