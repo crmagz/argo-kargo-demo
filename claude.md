@@ -51,8 +51,8 @@ This repository is a **proof-of-concept demo** evaluating Argo CD, Argo Rollouts
 | Rollout Extension | v0.3.4 | UI extension for Argo CD |
 | Cert Manager | Latest (Helm) | Uses `jetstack/cert-manager` chart |
 | kube-prometheus-stack | Latest (Helm) | Prometheus + Grafana for canary analysis |
-| product-api (demo app) | ^1.0.0 | Semver constraint for ECR image subscription |
-| Redis | 7-alpine | Sidecar for product-api caching |
+| product-api (demo app) | 0.9.0 baseline, ^1.0.0 promotion | Pre-deployed baseline + semver constraint for ECR subscription |
+| Redis (Bitnami Legacy) | 7.4.3 | Sidecar for product-api caching |
 | polinux/stress | latest | Stress sidecar for prod canary failure |
 
 > **Note**: Consider pinning Helm chart versions for reproducible installations. Check [Argo Helm Charts](https://github.com/argoproj/argo-helm) and [Cert Manager Releases](https://cert-manager.io/docs/releases/) for available versions.
@@ -198,20 +198,36 @@ curl http://localhost:30087/health
 curl http://localhost:30087/products
 ```
 
-### ECR Token Expiry
-ECR tokens expire every 12 hours. If the demo runs longer, refresh the credential:
+### ECR Credentials
+The install script creates a Kargo image credential secret using a pre-exchanged ECR token (`aws ecr get-login-password`). The token is valid for 12 hours.
+
+**Important**: The `repoURL` in the credential secret must include the full image path (e.g., `964108025908.dkr.ecr.us-east-1.amazonaws.com/product-api`), not just the registry hostname. Kargo matches credentials by prefix against the warehouse subscription URL.
+
+To refresh credentials if the demo runs longer than 12 hours:
 ```bash
 ECR_TOKEN=$(aws ecr get-login-password --region us-east-1)
-kubectl create secret generic kargo-demo-ecr -n kargo-demo \
-  --from-literal=repoURL=964108025908.dkr.ecr.us-east-1.amazonaws.com \
-  --from-literal=username=AWS \
-  --from-literal=password="$ECR_TOKEN" \
-  --dry-run=client -o yaml | kubectl apply -f -
-kubectl label secret kargo-demo-ecr -n kargo-demo kargo.akuity.io/cred-type=image --overwrite
+kubectl delete secret kargo-demo-ecr -n kargo-demo
+cat <<EOF | kubectl apply -f -
+apiVersion: v1
+kind: Secret
+type: Opaque
+metadata:
+  name: kargo-demo-ecr
+  namespace: kargo-demo
+  labels:
+    kargo.akuity.io/cred-type: image
+stringData:
+  repoURL: "964108025908.dkr.ecr.us-east-1.amazonaws.com/product-api"
+  username: AWS
+  password: "${ECR_TOKEN}"
+EOF
 ```
 
+### Baseline Strategy
+The base rollout references `product-api:0.9.0`, which Argo CD deploys immediately on sync. This gives all environments running pods and Grafana baseline metrics before any Kargo promotion happens. The Warehouse constraint (`^1.0.0`) discovers `1.0.0` as the new version, creating Freight for the canary promotion demo.
+
 ### Promotion Flow
-1. Kargo Warehouse detects new product-api image in ECR
+1. Kargo Warehouse detects `product-api:1.0.0` in ECR (newer than baseline 0.9.0)
 2. Creates Freight and promotes to dev stage
 3. PromotionTask runs: clone -> kustomize -> commit -> push -> sync
 4. Argo Rollouts performs canary deployment:

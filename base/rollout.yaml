@@ -20,7 +20,7 @@ spec:
     spec:
       containers:
       - name: product-api
-        image: 964108025908.dkr.ecr.us-east-1.amazonaws.com/product-api:1.0.0
+        image: 964108025908.dkr.ecr.us-east-1.amazonaws.com/product-api:0.9.0
         ports:
         - containerPort: 8080
         env:
@@ -47,16 +47,22 @@ spec:
           initialDelaySeconds: 10
           periodSeconds: 15
       - name: redis
-        image: redis:7-alpine
+        image: bitnamilegacy/redis:7.4.3
         ports:
         - containerPort: 6379
-        args: ["--save", "", "--appendonly", "no", "--requirepass", "demo"]
+        env:
+        - name: REDIS_PASSWORD
+          value: "demo"
+        - name: REDIS_DISABLE_COMMANDS
+          value: ""
+        - name: REDIS_AOF_ENABLED
+          value: "no"
         resources:
           requests:
             memory: 32Mi
             cpu: 50m
           limits:
-            memory: 64Mi
+            memory: 128Mi
             cpu: 100m
   strategy:
     canary:
