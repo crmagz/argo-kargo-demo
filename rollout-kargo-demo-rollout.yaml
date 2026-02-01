@@ -49,7 +49,7 @@ spec:
           value: demo
         - name: LOG_LEVEL
           value: info
-        image: 964108025908.dkr.ecr.us-east-1.amazonaws.com/product-api:1.0.0
+        image: 964108025908.dkr.ecr.us-east-1.amazonaws.com/product-api:1.0.1
         livenessProbe:
           httpGet:
             path: /health
