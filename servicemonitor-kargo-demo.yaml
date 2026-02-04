@@ -1,0 +1,17 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  labels:
+    app: kargo-demo
+    release: kube-prometheus-stack
+  name: kargo-demo
+spec:
+  endpoints:
+  - interval: 5s
+    path: /metrics
+    port: http
+  namespaceSelector:
+    any: true
+  selector:
+    matchLabels:
+      app: kargo-demo
