@@ -83,3 +83,5 @@ spec:
           requests:
             cpu: 50m
             memory: 32Mi
+      imagePullSecrets:
+      - name: ecr-pull-secret
