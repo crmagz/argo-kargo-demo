@@ -18,6 +18,8 @@ spec:
         prometheus.io/port: "8080"
         prometheus.io/path: "/metrics"
     spec:
+      imagePullSecrets:
+      - name: ecr-pull-secret
       containers:
       - name: product-api
         image: 964108025908.dkr.ecr.us-east-1.amazonaws.com/product-api:0.9.0

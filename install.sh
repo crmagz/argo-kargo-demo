@@ -189,6 +189,18 @@ stringData:
   password: ${ECR_TOKEN}
 EOF
 
+# Create ECR pull secrets in workload namespaces
+echo -e "${YELLOW}Creating ECR pull secrets in workload namespaces...${NC}"
+for ns in kargo-demo-dev kargo-demo-staging kargo-demo-prod; do
+  kubectl create namespace "$ns" --dry-run=client -o yaml | kubectl apply -f -
+  kubectl create secret docker-registry ecr-pull-secret \
+    --docker-server="${ECR_URL}" \
+    --docker-username=AWS \
+    --docker-password="${ECR_TOKEN}" \
+    -n "$ns" \
+    --dry-run=client -o yaml | kubectl apply -f -
+done
+
 # Apply Kargo resources from files (Warehouse, PromotionTask, Stages, AnalysisTemplates)
 echo -e "${YELLOW}Applying Kargo resources...${NC}"
 kubectl apply -f kargo/warehouse.yml
